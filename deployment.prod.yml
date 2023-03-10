@@ -1,0 +1,85 @@
+version: "3.3"
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE}
+    ports:
+      - "8000:8000"
+    networks:
+      - stack
+    volumes:
+      - media:/app/media
+    entrypoint: ./wsgi-entrypoint.sh
+    environment: &backend-env
+      SECRET_KEY: ${SECRET_KEY}
+      PAYSYS_URL: ${PAYSYS_URL}
+      PAYSYS_SECRET_KEY: ${PAYSYS_SECRET_KEY}
+      PAYSYS_SERVICE_ID: ${PAYSYS_SERVICE_ID}
+      PAYSYS_VENDOR_ID: ${PAYSYS_VENDOR_ID}
+      DEBUG: ${DEBUG}
+      KASSA_LOGIN: ${KASSA_LOGIN} 
+      KASSA_PASSWORD: ${KASSA_PASSWORD}
+      NIKITA_LOGIN: ${NIKITA_LOGIN}
+      NIKITA_PASSWORD: ${NIKITA_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_DB: ${POSTGRES_DB?Variable not set}
+      POSTGRES_USER: ${POSTGRES_USER?Variable not set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    depends_on:
+      - database
+
+  database:
+    image: postgres:15-alpine
+    networks:
+      - stack
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    environment:
+      <<: *backend-env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis
+    networks:
+      - stack
+    deploy:
+      replicas: 1
+
+
+  celery:
+    image: ${BACKEND_IMAGE}
+    restart: always
+    entrypoint: sh -c "celery -A core worker -l INFO"
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - stack
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    environment:
+      <<: *backend-env
+
+
+networks:
+  stack:
+
+volumes:
+  postgres_data:
+  media:

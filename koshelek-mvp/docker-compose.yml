@@ -1,0 +1,82 @@
+version: "3.3"
+
+services:
+  backend:
+    container_name: backend
+    build: .
+    networks:
+      - stack
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - ./media/:/media/
+      - ./static/:/static/
+    deploy:
+      replicas: 1
+    depends_on:
+      - database
+    env_file:
+      - .env
+
+  database:
+    image: postgres:15-alpine
+    container_name: postgresql
+    networks:
+      - stack
+    deploy:
+      mode: replicated
+      replicas: 1
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+
+  migrations:
+    build: .
+    depends_on:
+      - backend
+    container_name: migrations
+    volumes:
+      - ./:/app
+      - ./media/:/media/
+      - ./static/:/static/
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+    networks:
+      - stack
+    entrypoint: sh -c "python3 manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    env_file:
+      - .env
+
+  redis:
+    container_name: send_mail_redis
+    image: redis
+    networks:
+      - stack
+
+
+  celery:
+    build:
+      context: .
+    container_name: celery-worker
+    restart: always
+    entrypoint: sh -c "celery -A core worker -l INFO"
+    volumes:
+      - ./:/app
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - stack
+
+networks:
+  stack:
+
+volumes:
+  postgres_data:
+  media:

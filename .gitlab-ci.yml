@@ -1,0 +1,55 @@
+image: docker
+
+stages:
+    - lint
+    - build
+    - deploy
+
+before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+
+.lint-job: &lint_job
+    image: python:3.10
+    stage: lint
+    interruptible: true
+    cache:
+        - key:
+            files:
+            - poetry.lock
+            paths:
+                - .env
+                - .cache/pip
+                - .venv
+    only:
+        changes:
+            - "**/*.py"
+            - poetry.lock
+            - pyproject.toml
+
+    before_script:
+        - pip install -r requirements.txt
+
+    heltcheck:
+        <<: *lint_job
+        script:
+            - echo "Success"
+
+build-image:
+    stage: build
+    script:
+        - docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_BRANCH || true
+        - docker build --cache-from $CI_REGISTRY_IMAGE:$CI_COMMIT_BRANCH --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+        - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+        - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:$CI_COMMIT_BRANCH
+        - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_BRANCH
+    only: [main]
+
+deploy:
+    stage: deploy
+    only: [main]
+    variables:
+        BACKEND_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    script:
+        - docker stack deploy -c deployment.prod.yml --with-registry-auth --prune koshelek-mvp
+    tags:
+        - koshelek-stage

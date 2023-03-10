@@ -1,0 +1,66 @@
+version: "3.3"
+
+services:
+  backend:
+    container_name: backend
+    build: .
+    networks:
+      - stack
+    ports:
+      - "8000:8000"
+    volumes:
+      - media:/app/media/
+      - static:/app/static/
+    entrypoint: ./wsgi-entrypoint.sh
+    deploy:
+      replicas: 1
+    depends_on:
+      - database
+    env_file:
+      - .env
+
+  database:
+    image: postgres:15-alpine
+    container_name: postgresql
+    networks:
+      - stack
+    deploy:
+      mode: replicated
+      replicas: 1
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+
+
+  redis:
+    container_name: send_mail_redis
+    image: redis
+    networks:
+      - stack
+
+
+  celery:
+    build:
+      context: .
+    container_name: celery-worker
+    restart: always
+    entrypoint: sh -c "celery -A core worker -l INFO"
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - stack
+    volumes:
+      - media:/app/media/
+      - static:/app/static/
+    env_file:
+      - .env
+
+networks:
+  stack:
+
+volumes:
+  postgres_data:
+  media:
+  static:
